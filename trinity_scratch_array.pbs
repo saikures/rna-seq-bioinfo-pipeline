@@ -1,0 +1,98 @@
+#!/bin/bash
+#PBS -N trinity_array
+#PBS -J 1-40
+#PBS -l select=1:ncpus=32:mem=64gb:scratch_local=200gb
+#PBS -l walltime=24:00:00
+#PBS -j oe
+#PBS -o trinity_logs/array_job_$PBS_ARRAY_INDEX.log
+
+source /storage/brno12-cerit/home/saikures/miniconda3/bin/activate
+conda activate trinity_env
+
+cd "$PBS_O_WORKDIR"
+WORKDIR="$PBS_O_WORKDIR"
+SCRATCH=/scratch/"${USER}"/"${PBS_JOBID}"_"${PBS_ARRAY_INDEX}"
+
+# Create directories
+mkdir -p "$SCRATCH"
+mkdir -p "${WORKDIR}/trinity_results"
+mkdir -p "${WORKDIR}/trinity_logs"
+
+SAMPLE_LIST="${WORKDIR}/sample_list.txt"
+sample=$(sed -n "${PBS_ARRAY_INDEX}p" "$SAMPLE_LIST" | tr -d '\r\n' | xargs)
+r1="${sample}_1_pooled.fastq.gz"
+r2="${sample}_2_pooled.fastq.gz"
+
+echo "[$(date)] Starting Trinity for $sample"
+echo "Sample: '$sample'"
+echo "Scratch: $SCRATCH"
+
+# Check if already completed
+if [[ -s "${WORKDIR}/trinity_results/${sample}/trinity_out/Trinity.fasta" ]]; then
+    echo "[$(date)] Skipping $sample - already completed"
+    exit 0
+fi
+
+# Verify input files exist
+if [[ ! -f "$WORKDIR/$r1" ]]; then
+    echo "[$(date)] ERROR: Input file not found: $WORKDIR/$r1"
+    exit 1
+fi
+
+if [[ ! -f "$WORKDIR/$r2" ]]; then
+    echo "[$(date)] ERROR: Input file not found: $WORKDIR/$r2"
+    exit 1
+fi
+
+# Set up scratch working directory
+mkdir -p "$SCRATCH/${sample}"
+cd "$SCRATCH/${sample}"
+
+# Copy input files
+echo "[$(date)] Copying input files to scratch"
+if ! cp "$WORKDIR/$r1" . || ! cp "$WORKDIR/$r2" .; then
+    echo "[$(date)] ERROR: Failed to copy input files"
+    exit 1
+fi
+
+# Run Trinity
+echo "[$(date)] Running Trinity for $sample"
+if Trinity --seqType fq \
+           --left "$r1" \
+           --right "$r2" \
+           --CPU 32 \
+           --max_memory 50G \
+           --output trinity_out > "${sample}.log" 2>&1; then
+    
+    echo "[$(date)] Trinity completed successfully"
+    
+    # Verify output exists
+    if [[ ! -s "trinity_out/Trinity.fasta" ]]; then
+        echo "[$(date)] ERROR: Trinity.fasta not found or empty"
+        exit 1
+    fi
+    
+    # Copy results back
+    echo "[$(date)] Copying results back to working directory"
+    mkdir -p "${WORKDIR}/trinity_results/${sample}"
+    
+    if cp -r trinity_out "${WORKDIR}/trinity_results/${sample}/" && \
+       cp "${sample}.log" "${WORKDIR}/trinity_logs/"; then
+        echo "[$(date)] Results copied successfully"
+    else
+        echo "[$(date)] ERROR: Failed to copy results back"
+        exit 1
+    fi
+    
+else
+    echo "[$(date)] ERROR: Trinity failed for $sample"
+    # Still copy the log file for debugging
+    cp "${sample}.log" "${WORKDIR}/trinity_logs/" 2>/dev/null
+    exit 1
+fi
+
+# Clean up scratch (from parent directory)
+cd "$SCRATCH"
+rm -rf "${sample}"
+
+echo "[$(date)] Completed processing $sample"

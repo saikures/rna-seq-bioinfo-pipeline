@@ -1,0 +1,54 @@
+#!/bin/bash
+#PBS -N trinity_array
+#PBS -J 1-40
+#PBS -l select=1:ncpus=16:mem=128gb
+#PBS -l walltime=24:00:00
+#PBS -j oe
+#PBS -o trinity_logs/debug.log
+
+# Load modules and environment
+source /storage/brno12-cerit/home/saikures/miniconda3/bin/activate
+conda activate trinity_env
+
+cd "$PBS_O_WORKDIR"
+mkdir -p trinity_results trinity_logs
+
+# Get sample name (strip whitespace)
+SAMPLE=$(sed -n "${PBS_ARRAY_INDEX}p" sample_list.txt | tr -d '\r\n' | xargs)
+
+# Define input/output with full paths if needed
+R1="${SAMPLE}_1_pooled.fastq.gz"
+R2="${SAMPLE}_2_pooled.fastq.gz"
+OUTDIR="trinity_results/${SAMPLE}_trinity"
+LOGFILE="trinity_logs/${SAMPLE}.log"
+
+# Check if files exist
+if [[ ! -f "$R1" ]]; then
+    echo "[$(date)] ERROR: $R1 not found" | tee "$LOGFILE"
+    exit 1
+fi
+
+if [[ ! -f "$R2" ]]; then
+    echo "[$(date)] ERROR: $R2 not found" | tee "$LOGFILE"
+    exit 1
+fi
+
+# Skip if already complete
+if [[ -s "${OUTDIR}/Trinity.fasta" ]]; then
+    echo "[$(date)] Skipping $SAMPLE - already done."
+    exit 0
+fi
+
+# Run Trinity with error handling
+echo "[$(date)] Running Trinity for $SAMPLE" | tee "$LOGFILE"
+if Trinity --seqType fq \
+           --left "$R1" \
+           --right "$R2" \
+           --CPU 16 \
+           --max_memory 60G \
+           --output "$OUTDIR" >> "$LOGFILE" 2>&1; then
+    echo "[$(date)] Successfully finished $SAMPLE"
+else
+    echo "[$(date)] ERROR: Trinity failed for $SAMPLE"
+    exit 1
+fi

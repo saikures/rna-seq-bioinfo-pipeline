@@ -1,0 +1,59 @@
+#!/bin/bash
+#PBS -N trinity_parallel
+#PBS -l select=1:ncpus=48:mem=192gb
+#PBS -l walltime=24:00:00
+#PBS -j oe
+#PBS -o trinity_logs/trinity_parallel.log
+
+module load parallel
+
+# Load Conda and activate Trinity environment
+source /storage/brno12-cerit/home/saikures/miniconda3/bin/activate
+conda activate trinity_env
+
+cd "$PBS_O_WORKDIR"
+
+# Create output directories if not exist
+mkdir -p trinity_results trinity_logs
+
+# Create a script that runs Trinity for one sample
+cat << 'EOF' > run_trinity.sh
+#!/bin/bash
+
+sample="$1"
+
+r1="${sample}_1_pooled.fastq.gz"
+r2="${sample}_2_pooled.fastq.gz"
+outdir="trinity_results/${sample}_trinity"
+
+# Skip if already completed
+if [[ -s "$fasta" || -s "$logfile" ]]; then
+    echo "[$(date)] Skipping $sample — already completed." >&2
+    exit 0
+fi
+
+mkdir -p "$outdir"
+
+if [[ -f "$r1" && -f "$r2" ]]; then
+        Trinity --seqType fq \
+                --left "$r1" \
+                --right "$r2" \
+                --CPU 16 \
+                --max_memory 50G \
+                --output "$outdir" > trinity_logs/${sample}.log 2>&1
+else
+        echo "[$(date)] Missing input files for $sample" >&2
+fi
+EOF
+
+chmod +x run_trinity.sh
+
+echo "Starting parallel with:" $(cat sample_list.txt)
+
+# Run samples in parallel: 3 at a time (16 CPUs  ^w 3 = 48 total CPUs)
+parallel -j 3 ./run_trinity.sh ::: $(cat sample_list.txt)
+
+echo "[$(date)] All Trinity jobs completed."
+
+
+#in this add a section that skips jobs if the .fasta is present or if the .log file is present
