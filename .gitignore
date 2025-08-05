@@ -1,0 +1,9 @@
+*.log
+*.tmp
+*.fai
+*.bam
+*.sam
+*.fastq
+*.gz
+data/
+results/

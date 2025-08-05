@@ -1,0 +1,18 @@
+#!/bin/bash
+#PBS -N Trinity_M-38
+#PBS -l select=1:ncpus=16:mem=64gb
+#PBS -l walltime=48:00:00
+#PBS -j oe
+#PBS -o trinity_M38.log
+
+module load trinity
+
+cd $PBS_O_WORKDIR
+
+Trinity --seqType fq \
+        --left M-38_1_pooled.fastq.gz \
+        --right M-38_2_pooled.fastq.gz \
+        --CPU 16 \
+        --max_memory 64G \
+        --output M-38_trinity \
+        --no_salmon

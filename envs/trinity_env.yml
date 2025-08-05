@@ -1,0 +1,9 @@
+name: trinity_env
+channels:
+  - bioconda
+  - conda-forge
+dependencies:
+  - trinity
+  - minimap2
+  - circos
+  - python=3.10
